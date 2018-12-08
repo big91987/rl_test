@@ -70,6 +70,7 @@ class env2048:
     def step(self, a):
         done = False
         #s_ = cp.deepcopy(self.state)
+        state_old = self.state.copy()
         r = 0
         if a == 'u':
             # 每列
@@ -115,14 +116,18 @@ class env2048:
                 for j in range(self.W):
                     self.state[i][self.W - 1 - j] = tmp[j]
 
-        empty = []
-        for i in range(self.H):
-            for j in range(self.W):
-                if self.state[i][j] == 0:
-                    empty.append((i,j))
-
-        c = np.random.randint(0,len(empty)-1)
-        self.state[empty[c][0]][empty[c][1]] = pow(2, np.random.randint(1,2))
+        if not (self.state == state_old).all():
+            empty = []
+            for i in range(self.H):
+                for j in range(self.W):
+                    if self.state[i][j] == 0:
+                        empty.append((i,j))
+            if len(empty) > 0:
+                if len(empty) != 1:
+                    c = np.random.randint(1,len(empty))
+                else:
+                    c = 1
+                self.state[empty[c - 1][0]][empty[c - 1][1]] = pow(2, np.random.randint(1,2))
 
         if self.check_done():
             return self.state,r,True
@@ -196,28 +201,7 @@ class viz2048():
                 self.window.create_text(w0 + i * dw, h0 + j * dh,
                                         text=str(int(self.env.state[j][i])),
                                         tags='num',
-                                        font=('宋体',36,'normal'))
-
-
-
-
-
-
-
-
-
-
-        #window.pack()
-
-        #window.create_text(100, 50, text='神农本草经')
-
-        #tk.mainloop()
-
-#    def
-
-    #def step(self, a):
-    #   return super.step(a)
-
+                                        font=('宋体',24,'normal'))
 
 
 def test_rand():
