@@ -1,4 +1,12 @@
 
+
+
+class AC_network():
+    def __init__(self):
+        pass
+
+    def build_net(self):
+
 def a2c_train(
         log_path = '',
         load_file_name = '',
@@ -22,7 +30,7 @@ def a2c_train(
         for i_ep in range(MAX_EP):
             s = env.reset()
 
-    elif mode == 'train':
+    #elif mode == 'train':
 
 
 
@@ -37,7 +45,7 @@ def a2c_train(
 
 def a2c_infer(
         log_path = '',
-        load_file_name = '',
+        pb_file_name = '',
         render = False):
     env = gym.make('Breakout-v4')
     env.seed(1)
@@ -58,4 +66,10 @@ def a2c_infer(
             if done:
                 break
 
+def test_a2c_infer():
+    a2c_infer(log_path='./log/', pb_name='test.pb',render=True )
 
+
+
+if __name__ == '__main__':
+    test_a2c_infer()

@@ -175,6 +175,7 @@ class viz2048():
             s, r, done = self.env.step('r')
         if done:
             print('game over !!!!')
+            return
         print("ke.keycode", ke.keycode)  # 按键的唯一代码，用于判断按下的是哪个键</class></key></button-1>
         self.re_draw()
 
