@@ -1,11 +1,14 @@
-
+import gym
+import tensorflow as tf
+import matplotlib as plt
 
 
 class AC_network():
     def __init__(self):
+        self.sess = tf.Session()
         pass
 
-    def build_net(self,state_shape):
+    def build_net(self,state_shape, action_dim):
         #with tf.variable_scope('input')
         with tf.variable_scope('cnn'):
             self.s = tf.placeholder(tf.float32,
@@ -118,7 +121,7 @@ class AC_network():
             self.td_err = self.target - self.v
             self.critic_loss = tf.square(self.td_err)
             self.actor_loss = tf.reduce_mean(
-                    self.log_prob * self.td_err, name = 'exp_v'i)
+                    self.log_prob * self.td_err, name = 'exp_v')
 
             self.entropy = \
                     -tf.reduce_sum(
@@ -130,13 +133,16 @@ class AC_network():
             self.train_op = tf.train.AdamOptimizer(
                     self.params['LR']).minimize(self.loss)
 
-    def train_td(s, r, a, s_n, gamma):
+    def train_by_td(self, s, r, a, s_n, gamma):
         v_n = self.sess.run(self.v,{self.s:s_n})
         target = r + gamma * v_n
         self.sess.run(self.train_op,
                 {self.a:a, self.s:s,self.target:target})
 
-    def play(s):
+    def train_use_gt(self, ):
+        pass
+
+    def choose(s):
         a_prob = self.sess.run(self.acts_prob, {self.s:s})
         a_prob /= np.sqrt(np.sum(np.square(a_prob)))
         a_prob /= np.sum(a_prob)
@@ -152,27 +158,17 @@ class AC_network():
     def import_pb(self):
         pass
 
-    def store(self):
+    def export_log(self, log_path = './log/'):
+        tf.summary.FileWriter(log_path, sess.graph)
+
+    def store(self, save_name ):
+        saver = tf.train.Saver()
+        saver.save(sess, save_name)
+
+    def restore(self, load_name):
+        saver = tf.train.Saver()
+        saver.restore(sess, load_name)
         pass
-
-    def restore(self):
-        pass
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 def a2c_train(
@@ -185,18 +181,20 @@ def a2c_train(
 
     sess = tf.Session()
 
+    ac = AC_network()
+    ac.build_net(state_shape= env.observation_space.shape, action_dim= env.action_space.n)
+
     sess.run(tf.global_variables_initializer())
 
     if log_path != '':
-        tf.summary.FileWriter(log_path, sess.graph)
+        pass
+        #tf.summary.FileWriter(log_path, sess.graph)
 
     if load_file_name != '':
-        saver = tf.train.Saver()
-        saver.restore(sess, load_file_name)
+        pass
+        #saver = tf.train.Saver()
+        #saver.restore(sess, load_file_name)
 
-    if mode == 'infer':
-        for i_ep in range(MAX_EP):
-            s = env.reset()
 
     #elif mode == 'train':
 
