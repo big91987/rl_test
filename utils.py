@@ -9,18 +9,20 @@ import time
 
 # 输入 N个3通道的图片array
 # 输出：一个array 形状 （84 84 N）
-# 步骤： 1 resize ==>（84 84 3）[0-255]
-#       2 gray   ==> (84 84 1) [0-255]
-#       3 norm   ==> (84 84 1) [0.0-1.0]
-#       4 concat ===>(84 84 N) [0.0-1.0]
-def imgbuffer_pergress(imgbuffer):
+# 原始图片格式
+# 步骤： 1. resize ==>（84 84 3）[uint 0-255]
+#       2. gray   ==> (84 84 1) [uint 0-255]
+#       3. norm   ==> (84 84 1) [float32 0.0-1.0]
+#       4. concat ===>(84 84 N) [float32 0.0-1.0]
+def imgbuffer_process(imgbuffer, out_shape = (84, 84)):
     img_list = []
     for img in imgbuffer:
-        tmp = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-        tmp = cv2.resize(src=tmp, dsize=(84, 84))
-        cv2.normalize(tmp, tmp, alpha=0.0, beta=1.0, norm_type=cv2.NORM_MINMAX, dtype=)
+        tmp = cv2.resize(src=img, dsize=out_shape)
+        tmp = cv2.cvtColor(tmp, cv2.COLOR_BGR2GRAY)
+        ## 需要将数据类型转为32F
+        tmp = cv2.normalize(tmp, tmp, alpha=0.0, beta=1.0, norm_type=cv2.NORM_MINMAX, dtype=cv2.CV_32F)
+        # 扩充一个维度
         tmp = np.expand_dims(tmp, len(tmp.shape))
-        #print ('tmp_shape = '+ str(tmp.shape))
         img_list.append(tmp)
     ret =  np.concatenate(tuple(img_list), axis=2)
     #print('ret_shape = ' + str(ret.shape))
@@ -31,11 +33,10 @@ def imgbuffer_pergress(imgbuffer):
 def test():
     env = gym.make('Breakout-v4')
     env.seed(1)  # reproducible
-    #env = env.unwrapped
+    # env = env.unwrapped
     N_F = env.observation_space.shape[0]  # 状态空间的维度
     N_A = env.action_space.n  # 动作空间的维度
 
-    #img_buffer = Queue(maxsize=4)
     img_buffer = []
     img_buffer_size = 4
 
@@ -46,7 +47,7 @@ def test():
     for i in range(max_loop):
         a = np.random.randint(0, N_A - 1)
         s_, r, done, info = env.step(a)
-        #env.render()
+        env.render()
 
         if len(img_buffer) < img_buffer_size:
             img_buffer.append(s_)
@@ -55,10 +56,23 @@ def test():
             img_buffer.pop(0)
             img_buffer.append(s_)
 
-        img_input = imgbuffer_pergress(img_buffer)
-        print ('img_input_shape = ' + str(img_input.shape))
-        plt.imshow(np.uint8(img_input[:,:,0] * 255))
+        img_input = imgbuffer_process(img_buffer)
+        print('img_input_shape = ' + str(img_input.shape))
+        plt.subplot(2, 2, 1)
+        plt.imshow(np.uint8(img_input[:, :, 0] * 255), cmap='gray')
+        plt.subplot(2, 2, 2)
+        plt.imshow(np.uint8(img_input[:, :, 1] * 255), cmap='gray')
+        plt.subplot(2, 2, 3)
+        plt.imshow(np.uint8(img_input[:, :, 2] * 255), cmap='gray')
+        plt.subplot(2, 2, 4)
+        plt.imshow(np.uint8(img_input[:, :, 3] * 255), cmap='gray')
         plt.show()
+
+if __name__ == '__main__':
+    test()
+
+
+
 
     #with tf.Session() as sess:
     #    for i in range(max_loop):
@@ -124,5 +138,4 @@ def test():
             #    f.write(encode_image.eval())
     #pass
 
-if __name__ == '__main__':
-    test()
+
