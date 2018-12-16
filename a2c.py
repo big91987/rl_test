@@ -141,18 +141,19 @@ class AC_network():
             self.log_prob = tf.log(self.acts_prob[0, self.a])
             self.td_err = self.target - self.v
             self.critic_loss = tf.square(self.td_err)
-            self.actor_loss = tf.reduce_mean(
-                    self.log_prob * self.td_err, name = 'exp_v')
+            self.actor_loss = -tf.reduce_mean(self.log_prob * self.td_err, name = 'a_loss')
 
             self.entropy = \
                     -tf.reduce_sum(
                             self.acts_prob * \
                                 tf.log(self.acts_prob),
                             name='entropy')
-            self.loss = self.critic_loss - \
-                    self.actor_loss - entropy_c * self.entropy
-            self.train_op = tf.train.AdamOptimizer(
-                    0.01).minimize(self.loss)
+            self.loss = self.actor_loss + 0.5*self.critic_loss - 0.01* self.entropy
+            self.train_op = tf.train.AdamOptimizer(7e-4).minimize(self.loss)
+            #self.loss = self.critic_loss - \
+            #        self.actor_loss - entropy_c * self.entropy
+            #self.train_op = tf.train.AdamOptimizer(
+            #        0.1).minimize(self.loss)
 
     def train_by_td(self, s, r, a, s_n, gamma):
         v_n = self.sess.run(self.v,{self.s:s_n})
@@ -226,9 +227,13 @@ def a2c_train(
         img_buffer.append(s)
 
         done = False
-
+        max_k = 3000
+        k = 0
         while not done:
-
+            k += 1
+            if k > max_k:
+                print('wait too long for one test,break')
+                break
             if len(img_buffer) < img_buffer_size:
                 a = np.random.randint(0, N_A)
                 s_, r, done, info = env.step(a)
