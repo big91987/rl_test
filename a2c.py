@@ -2,6 +2,7 @@ import gym
 import tensorflow as tf
 import utils
 import numpy as np
+import os
 import cv2
 import matplotlib.pyplot as plt
 
@@ -12,8 +13,17 @@ class AC_network():
         self.params.update(params)
         pass
 
-    def load_net(self):
-        graph = self.sess.graph
+    def load_net(self, load_file_path, load_file_name):
+        ckpt_state = tf.train.get_checkpoint_state(load_file_path)
+        if not ckpt_state:
+            print('load from file failed!')
+            return
+
+        saver = tf.train.import_meta_graph(
+            load_file_path + '/' + load_file_name)
+        graph = tf.get_default_graph()
+
+        #graph = self.sess.graph
         self.s = graph.get_tensor_by_name('cnn/state:0')
         self.v = graph.get_tensor_by_name('critic/v:0')
         self.acts_prob = graph.get_tensor_by_name('actor/acts_prob:0')
@@ -27,6 +37,9 @@ class AC_network():
 
         self.entropy = graph.get_tensor_by_name('train/entropy:0')
         self.loss = graph.get_tensor_by_name('train/loss:0')
+
+        saver.restore(self.sess, tf.train.latest_checkpoint(load_file_path))
+
         self.train_op = tf.train.AdamOptimizer(
                     0.3).minimize(self.loss)
 
@@ -183,20 +196,23 @@ class AC_network():
     def export_log(self, log_path = './log/'):
         tf.summary.FileWriter(log_path, self.sess.graph)
 
-    def store(self, save_name ):
+    def store(self, save_file_name):
         saver = tf.train.Saver()
-        saver.save(self.sess, save_name)
+        saver.save(self.sess, save_file_name)
 
-    def restore(self, load_name):
+    def restore(self, load_file_path):
+        ckpt_state = tf.train.get_checkpoint_state(load_file_path)
+        if not ckpt_state:
+            print('restore failed! ')
         saver = tf.train.Saver()
-        saver.restore(self.sess, load_name)
-        pass
+        saver.restore(self.sess, ckpt_state.model_checkpoint_path)
 
 def a2c_train(
         log_path = '',
         load_file_name = '',
         save_file_name = '',
-        render = False):
+        render = False,
+        sample_persist = False):
     env = gym.make('Breakout-v4')
     env.seed(1)
     #env = env.unwarpped
@@ -204,16 +220,31 @@ def a2c_train(
     N_A = env.action_space.n
 
     sess = tf.Session()
+    saver = tf.train.Saver( max_to_keep = 3)
 
     ac = AC_network(sess=sess)
+    ac.build_net(input_shape=[84,84,4],action_dim=N_A)
 
-    if load_file_name != '':
-        ac.restore(load_name=load_file_name)
-        ac.load_net()
-    else:
-        ac.build_net(input_shape = [84,84,4],action_dim=N_A)
+    #if load_file_name !='':
+    #    pass
 
     sess.run(tf.global_variables_initializer())
+
+    if sample_persist:
+        if os.exists('./persist_data/') and \
+                os._exists('./persist_data/checkpoint'):
+            saver.restore(sess,tf.train.latest_checkpoint('./persist_data'))
+
+
+
+
+    #if load_file_name != '':
+    #    ac.restore(load_name=load_file_name)
+    #    ac.load_net()
+    #else:
+    #    ac.build_net(input_shape = [84,84,4],action_dim=N_A)
+
+
 
     #img_buffer = []
     img_buffer_size = 4
@@ -227,6 +258,11 @@ def a2c_train(
         img_buffer.append(s)
 
         done = False
+
+        if sample_persist:
+            if i % 100 == 0:
+                saver.save(sess, 'persist/', global_step=i)
+
         max_k = 3000
         k = 0
         while not done:
@@ -354,7 +390,7 @@ def test_a2c_infer():
     a2c_infer(log_path='./log/', pb_name='test.pb',render=True )
 
 def test_a2c_train():
-    a2c_train(render=False)
+    a2c_train(render=False, sample_persist=True)
 
 
 
