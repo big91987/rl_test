@@ -206,61 +206,6 @@ class StackFrame(gym.Wrapper):
         return stack_obs, reward, done, info
 
 
-def worker(conn, env):
-    while True:
-        cmd, data = conn.recv()
-        if cmd == "step":
-            obs, reward, done, info = env.step(data)
-            if done:
-                obs = env.reset()
-            conn.send((obs, reward, done, info))
-        elif cmd == "reset":
-            obs = env.reset()
-            conn.send(obs)
-        else:
-            raise NotImplementedError
-
-
-# 输入时一堆建好的env
-class ParallelEnv(gym.Wrapper):
-    def __init__(self, envs):
-        """envs is a list of env
-        If sub_env is done, automatically reset
-        """
-        assert len(envs) >= 1, 'No environment is given'
-        super(ParallelEnv, self).__init__(envs[0])  # make self.observation_space consistent with sigle process
-        self._num_procs = len(envs)
-        self.envs = envs
-        self.closed = False
-
-        self.locals = []
-        for env in self.envs:
-            local, remote = Pipe()
-            self.locals.append(local)
-            p = Process(target=worker, args=(remote, env))
-            p.daemon = True
-            p.start()
-            remote.close()
-
-    def reset(self):
-        for local in self.locals:
-            local.send(("reset", None))
-        results = [local.recv() for local in self.locals]
-        return results
-
-    def step(self, actions):
-        for local, action in zip(self.locals, actions):
-            local.send(('step', action))
-        results = zip(*[local.recv() for local in self.locals])
-        return results
-
-    def render(self, mode, **kwargs):
-        raise NotImplementedError
-
-    def unwrapped(self):
-        raise NotImplementedError
-
-
 class Worker(object):
     def __init__(self, **kwargs):
         assert 'worker_port' in kwargs.keys(), 'worker_port needed... worker_proc quit'
@@ -414,12 +359,12 @@ class pEnv(object):
 
 
 def test_pEnv():
-    n_env = 8
+    n_env = 32
 
     env = pEnv(env_id='BreakoutNoFrameskip-v4',
                n_env=n_env,
                debug=False,
-               render=True,
+               render=False,
                num_stack=4)
 
     print('info of env0 {}'.format(list(env.get_env_info())))
