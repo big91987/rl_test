@@ -65,3 +65,8 @@ def cnn_model():
     model.add(keras.layers.Flatten())
     return model
 
+def model_generator(model_name, model_path = None):
+    if model_name == 'cnn_modle':
+        return cnn_model()
+    else:
+        return None
