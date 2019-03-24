@@ -19,5 +19,5 @@ class A2CAgent(object):
             add(keras.layers.Dense(units=1))
 
         pass
-    def _load_net(self):
+    def _load_net(self, load_file):
         pass
