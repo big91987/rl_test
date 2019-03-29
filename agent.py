@@ -6,7 +6,7 @@ class A2CAgent(object):
         self.params = {}
         self.params.update(kwargs)
 
-    def _build_net(self):
+    def build_net(self):
         assert 'num_action' in self.params.keys() and isinstance(self.params['num_action'], int), \
             'param num_action (type int) needed ... '
         # load base model
@@ -18,6 +18,7 @@ class A2CAgent(object):
         self.value_net = self.base_model. \
             add(keras.layers.Dense(units=1))
 
+    def load_net(self, load_file):
         pass
-    def _load_net(self, load_file):
-        pass
+
+    

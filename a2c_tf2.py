@@ -1,85 +1,11 @@
-import tensorflow.python.keras as keras
-
 import gym
 import logging
 import numpy as np
 import tensorflow as tf
 import matplotlib.pyplot as plt
-import tensorflow.python.keras.layers as kl
-import tensorflow.python.keras.losses as kls
-import tensorflow.python.keras.optimizers as ko
-
-# class CNNModel(object):
-#     def __init__(self):
-#         pass
-#     def __call__(self, *args, **kwargs):
-#         # if not 'input' in kwargs.keys():
-#         #     print('input need')
-#         #     return
-#         # input = kwargs['input']
-#
-#         model = keras.Sequential()
-#         model.add(keras.layers.Conv2D(
-#             filters=32,
-#             kernel_size=8,
-#             strides=(3, 3),
-#             padding='valid',
-#             kernel_initializer='he_normal',
-#         ))
-#         model.add(keras.layers.Activation('relu'))
-#         model.add(keras.layers.Conv2D(
-#             filters=64,
-#             kernel_size=4,
-#             strides=(2, 2),
-#             padding='valid',
-#             kernel_initializer='he_normal',
-#         ))
-#         model.add(keras.layers.Activation('relu'))
-#         model.add(keras.layers.Conv2D(
-#             filters=64,
-#             kernel_size=8,
-#             strides=(1, 1),
-#             padding='valid',
-#             kernel_initializer='he_normal',
-#         ))
-#         model.add(keras.layers.Activation('relu'))
-#         model.add(keras.layers.Flatten())
-
-def cnn_model():
-    model = keras.Sequential()
-    model.add(keras.layers.Conv2D(
-        filters=32,
-        kernel_size=8,
-        strides=(3, 3),
-        padding='valid',
-        kernel_initializer='he_normal',
-    ))
-    model.add(keras.layers.Activation('relu'))
-    model.add(keras.layers.Conv2D(
-        filters=64,
-        kernel_size=4,
-        strides=(2, 2),
-        padding='valid',
-        kernel_initializer='he_normal',
-    ))
-    model.add(keras.layers.Activation('relu'))
-    model.add(keras.layers.Conv2D(
-        filters=64,
-        kernel_size=8,
-        strides=(1, 1),
-        padding='valid',
-        kernel_initializer='he_normal',
-    ))
-    model.add(keras.layers.Activation('relu'))
-    model.add(keras.layers.Flatten())
-    return model
-
-def model_generator(model_name, model_path = None):
-    if model_name == 'cnn_modle':
-        return cnn_model()
-    else:
-        return None
-
+import tensorflow.keras.layers as kl
+import tensorflow.keras.losses as kls
+import tensorflow.keras.optimizers as ko
 from model import model_generator
 
 
@@ -90,13 +16,13 @@ class ProbabilityDistribution(tf.keras.Model):
         return tf.squeeze(tf.random.categorical(logits=logits, num_samples=1), axis=-1)
 
 
-class A2CModel(tf.python.keras.Model):
-    def __init__(self, num_actions, base_model=None):
+class Model(tf.keras.Model):
+    def __init__(self, num_actions, base_model = None):
         super().__init__('mlp_policy')
         # no tf.get_variable(), just simple Keras API
         self.base_model = base_model
-        # self.hidden1 = kl.Dense(128, activation='relu')
-        # self.hidden2 = kl.Dense(128, activation='relu')
+        self.hidden1 = kl.Dense(128, activation='relu')
+        self.hidden2 = kl.Dense(128, activation='relu')
         self.value = kl.Dense(1, name='value')
         # logits are unnormalized log probabilities
         self.logits = kl.Dense(num_actions, name='policy_logits')
@@ -107,10 +33,9 @@ class A2CModel(tf.python.keras.Model):
         # inputs is a numpy array, convert to Tensor
         x = tf.convert_to_tensor(inputs)
         # separate hidden layers from the same input tensor
-        # hidden_logs = self.hidden1(x)
-        # hidden_vals = self.hidden2(x)
-        base = self.base_model(x)
-        return self.logits(base), self.value(base)
+        hidden_logs = self.hidden1(x)
+        hidden_vals = self.hidden2(x)
+        return self.logits(hidden_logs), self.value(hidden_vals)
 
     # 返回根据预测logit采样出的结果以及value
     def action_value(self, obs):
@@ -150,7 +75,7 @@ class A2CAgent:
                 observations[step] = next_obs.copy()
                 actions[step], values[step] = self.model.action_value(next_obs[None, :])
                 next_obs, rewards[step], dones[step], _ = env.step(actions[step])
-                # 记录episode的奖励
+
                 ep_rews[-1] += rewards[step]
                 if dones[step]:
                     ep_rews.append(0.0)
@@ -163,7 +88,6 @@ class A2CAgent:
             acts_and_advs = np.concatenate([actions[:, None], advs[:, None]], axis=-1)
             # performs a full training step on the collected batch
             # note: no need to mess around with gradients, Keras API handles it
-            # 两个y是用来fit self._logits_loss, self._value_loss的
             losses = self.model.train_on_batch(observations, [acts_and_advs, returns])
             logging.debug("[%d/%d] Losses: %s" % (update + 1, updates, losses))
         return ep_rews
@@ -180,24 +104,19 @@ class A2CAgent:
 
     def _returns_advantages(self, rewards, dones, values, next_value):
         # next_value is the bootstrap value estimate of a future state (the critic)
-        # bootstrap 自举 用未来估计现在
-        returns = np.append(arr=np.zeros_like(rewards), values=next_value, axis=-1)
+        returns = np.append(np.zeros_like(rewards), next_value, axis=-1)
         # returns are calculated as discounted sum of future rewards
-        # 求轨迹每个t的Gt，即当前步到最后一步的Gt
         for t in reversed(range(rewards.shape[0])):
             returns[t] = rewards[t] + self.params['gamma'] * returns[t + 1] * (1 - dones[t])
         returns = returns[:-1]
         # advantages are returns - baseline, value estimates in our case
-        # adv = Gt - V
         advantages = returns - values
         return returns, advantages
 
-    # 计算值函数损失
     def _value_loss(self, returns, value):
         # value loss is typically MSE between value estimates and returns
         return self.params['value'] * kls.mean_squared_error(returns, value)
 
-    # 计算策略梯度
     def _logits_loss(self, acts_and_advs, logits):
         # a trick to input actions and advantages through same API
         actions, advantages = tf.split(acts_and_advs, 2, axis=-1)
@@ -207,10 +126,8 @@ class A2CAgent:
         # policy loss is defined by policy gradients, weighted by advantages
         # note: we only calculate the loss on the actions we've actually taken
         actions = tf.cast(actions, tf.int32)
-        # Advantage actor-critic形式的策略梯度
         policy_loss = weighted_sparse_ce(actions, logits, sample_weight=advantages)
         # entropy loss can be calculated via CE over itself
-        # 添加策略的熵，增加随机性
         entropy_loss = kls.categorical_crossentropy(logits, logits, from_logits=True)
         # here signs are flipped because optimizer minimizes
         return policy_loss - self.params['entropy'] * entropy_loss
@@ -220,7 +137,7 @@ if __name__ == '__main__':
     logging.getLogger().setLevel(logging.INFO)
 
     env = gym.make('CartPole-v0')
-    model = A2CModel(num_actions=env.action_space.n)
+    model = Model(num_actions=env.action_space.n)
     agent = A2CAgent(model)
 
     rewards_history = agent.train(env)
