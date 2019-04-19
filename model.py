@@ -1,13 +1,13 @@
-import tensorflow.python.keras as keras
+import tensorflow.keras as keras
 
 import gym
 import logging
 import numpy as np
 import tensorflow as tf
 import matplotlib.pyplot as plt
-import tensorflow.python.keras.layers as kl
-import tensorflow.python.keras.losses as kls
-import tensorflow.python.keras.optimizers as ko
+import tensorflow.keras.layers as kl
+import tensorflow.keras.losses as kls
+import tensorflow.keras.optimizers as ko
 
 # class CNNModel(object):
 #     def __init__(self):
@@ -44,6 +44,166 @@ import tensorflow.python.keras.optimizers as ko
 #         ))
 #         model.add(keras.layers.Activation('relu'))
 #         model.add(keras.layers.Flatten())
+
+
+class Td_n_Buffer(object):
+
+    def __init__(self,buffer_size, gamma, worker_num = 1, **kwargs):
+        self.buffer_size = buffer_size
+        self.gamma = gamma
+        # self.worker_num = worker_num
+        # FIFO队列
+        # 注意rl是时间相关序列问题，每个worker的轨迹具有时间相关性不能shuffle，不同worker的结果并行存储到FIFObuffer中
+        self.reset()
+
+        self.obs_queue = []
+        self.reward_queue = []
+        self.done_queue = []
+        self._len = 0
+
+    def reset(self):
+        # self.obs_queue = [None] * self.buffer_size
+        # self.reward_queue = [None] * self.buffer_size
+        # self.done_queue = [None] * self.buffer_size
+        # self.value_queue = [None] * self.buffer_size
+        self.obs_queue = []
+        self.reward_queue = []
+        self.done_queue = []
+        self._len = 0
+
+
+
+
+        # self.action_queue = [None] * self.buffer_size
+        # self.action_prob_queue = [None] * self.buffer_size
+        # self.info
+
+        # self.adv_queue = [None] * self.buffer_size
+        # self.gt_queue = [None] * self.buffer_size
+        # self.buffer_num = 0
+        # self.step_num = 0
+
+    # # 获取k步折扣
+    # def get_discount(self, k):
+    #     assert k <= self.buffer_size
+    #     # r0, r1*gamma, r2*gam^2 ... rn-1*gam^n-1
+    #     dis_list = [self.reward_queue[i] * np.power(self.gamma, float(i)) for i in range(len(self.reward_queue))]
+    #
+    #     coef = np.power(self.gamma, range(len(self.reward_queue)))
+    #     return sum(dis_list)
+
+    def get_target_and_obs(self, v_future = None):
+        # coef = np.power(self.gamma, range(len(self.value_queue-1)))
+        # return np.sum(coef * self.reward_queue[:-2]) + self.value_queue[-1]
+        # return get_
+        tmp = np.zeros_like(self.obs_queue[0])
+        len = len(self.obs_queue)
+        for i in range(len):
+            # tmp = self.gamma * (self.reward_queue[len - i] * (1 - self.done_queue[len - i]) + tmp)
+            tmp += pow(self.gamma, i) * self.reward_queue[i] * (1 - self.done_queue[i])
+
+        return tmp + v_future, self.obs_queue[0]
+
+
+    # def put(self, reward, obs, done, value):
+    #     for i in reversed(range(1, self.buffer_size)):
+    #         self.obs_queue[i] = self.obs_queue[i-1]
+    #         self.reward_queue[i] = self.reward_queue[i-1]
+    #         self.done_queue[i] = self.reward_queue[i-1]
+    #         self.value_queue[i] = self.value_queue[i-1]
+    #     self.obs_queue[0] = obs
+    #     self.reward_queue[0] = reward
+    #     self.done_queue[0] = done
+    #     self.value_queue[0] = value
+    #     self.buffer_num = self.buffer_num + 1 if self.buffer_num < self.buffer_size else self.buffer_size
+    #     self.step_num = self.step_num + 1
+
+    def put(self, reward, obs, done):
+
+        if self._len < self.buffer_size:
+            self.reward_queue.append(reward)
+            self.obs_queue.append(obs)
+            self.done_queue.append(done)
+        else:
+
+            for i in range(self.buffer_size - 1):
+                self.obs_queue[i] = self.obs_queue[i+1]
+                self.reward_queue[i] = self.reward_queue[i+1]
+                self.done_queue[i] = self.reward_queue[i+1]
+
+            self.obs_queue[-1] = obs
+            self.reward_queue[-1] = reward
+            self.done_queue[-1] = done
+
+        self._len += 1
+        # self.buffer_num = self.buffer_num + 1 if self.buffer_num < self.buffer_size else self.buffer_size
+        # self.step_num = self.step_num + 1
+
+    # # 获取n步td
+    # def get_adv(self):
+    #
+    #     if self.buffer_num < self.buffer_size:
+    #         return np.zeros_like(self.reward_queue[0])
+    #
+    #     discount = self.reward_queue[self.buffer_num - 1]
+    #     v = self.value_queue[self.buffer_num - 1]
+    #     for t in reversed(range(self.buffer_num)):
+    #         discount = self.reward_queue[t] + self.gamma * discount * (1.0-self.done_queue[t])
+    #         v = v * self.gamma
+    #
+    #     return discount + v - self.value_queue[0]
+    #
+    #
+    #     # 获取n步td
+
+
+class Buffer(object):
+
+    def __init__(self, buffer_size, gamma):
+        self.buffer_size = buffer_size
+        self.gamma = gamma
+        # FIFO队列
+        self.reset()
+
+        self.obs_queue = []
+        self.reward_queue = []
+        self.done_queue = []
+        self._len = 0
+
+    def reset(self):
+        self.obs_queue = []
+        self.reward_queue = []
+        self.done_queue = []
+        self._len = 0
+
+    # 但会v的估计值，以及obs，用于训练    v_target + v_future  ===> 过网络的 v(obs)
+    def get_target_and_obs(self, v_future=None):
+        tmp = np.zeros_like(self.obs_queue[0])
+        for i in range(len(self.obs_queue)):
+            tmp += pow(self.gamma, i) * self.reward_queue[i] * (1 - self.done_queue[i])
+
+        return tmp + v_future, self.obs_queue[0]
+
+    def put(self, reward, obs, done):
+
+        if self._len < self.buffer_size:
+            self.reward_queue.append(reward)
+            self.obs_queue.append(obs)
+            self.done_queue.append(done)
+        else:
+
+            for i in range(self.buffer_size - 1):
+                self.obs_queue[i] = self.obs_queue[i + 1]
+                self.reward_queue[i] = self.reward_queue[i + 1]
+                self.done_queue[i] = self.reward_queue[i + 1]
+
+            self.obs_queue[-1] = obs
+            self.reward_queue[-1] = reward
+            self.done_queue[-1] = done
+
+        self._len += 1
+
+
 
 def cnn_model():
     model = keras.Sequential()
@@ -90,7 +250,7 @@ class ProbabilityDistribution(tf.keras.Model):
         return tf.squeeze(tf.random.categorical(logits=logits, num_samples=1), axis=-1)
 
 
-class A2CModel(tf.python.keras.Model):
+class A2CModel(tf.keras.Model):
     def __init__(self, num_actions, base_model=None):
         super().__init__('mlp_policy')
         # no tf.get_variable(), just simple Keras API
