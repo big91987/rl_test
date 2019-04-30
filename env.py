@@ -16,6 +16,7 @@ Modify from:
 from __future__ import absolute_import
 from __future__ import print_function
 from __future__ import division
+from buffer import baseBuffer as Buffer
 
 import cv2
 import gym
@@ -26,6 +27,7 @@ from collections import deque
 import os
 import matplotlib
 import time
+from buffer import baseBuffer as Buffer
 
 # 初始env加上若干步空操作（noop）
 class NoopResetEnv(gym.Wrapper):
@@ -212,6 +214,10 @@ class Worker(object):
         assert 'env_id' in kwargs.keys(), 'env_id needed... worker_proc quit'
         assert 'seed' in kwargs.keys(), 'seed need ... slave_proc quit'
         # assert 'slave_pipe' in kwargs.keys(), 'need slave pipe ... slave_proc quit'
+        assert 'gamma' in kwargs.keys(), 'gamma is needed for buffer'
+        assert 'buffer_size' in kwargs.keys(), 'buffer_size is needed for buffer'
+
+        self.producer = Buffer(gamma=kwargs['gamma'], size=kwargs['buffer_size'])
 
         self._debug = True if ('debug' in kwargs.keys() and kwargs['debug'] is True) else False
         self._render = True if ('render' in kwargs.keys() and kwargs['render'] is True) else False
@@ -254,6 +260,11 @@ class Worker(object):
 
         self._port = kwargs['worker_port']
 
+        self.status = {
+            'obs': None,
+            'done': None,
+        }
+
     def _log(self, info):
         if not self._debug:
             return
@@ -267,12 +278,31 @@ class Worker(object):
             if cmd == "step":
                 n_step += 1
                 self._log(info='[step {}]action = {}'.format(n_step, data))
-                obs, reward, done, info = self._env.step(data)
+                obs, reward, done, info = self._env.step(data[:-2])
                 self._log(info='[step {}]reward = {}'.format(n_step, reward))
-                if done:
-                    self._log(info='done ... reset'.format(n_step))
-                    obs = self._env.reset()
-                self._port.send((obs, reward, done, info))
+                # if done:
+                #     self._log(info='done ... reset'.format(n_step))
+                #     obs = self._env.reset()
+                train_tuple = self.producer(done=done,reward=reward,next_obs=obs,value=data[-1])
+                self._port.send((obs, reward, done, info, train_tuple))
+                self.status['obs'] = obs
+                self.status['done'] = done
+
+                if self._render:
+                    self._env.render()
+            if cmd == "fit":
+                n_step += 1
+                action, value = data
+                self._log(info='[step {}]action, value = {}'.format(n_step, data))
+                obs, reward, done, info = self._env.step(action=action)
+                self._log(info='[step {}]reward = {}'.format(n_step, reward))
+                # if done:
+                #     self._log(info='done ... reset'.format(n_step))
+                #     obs = self._env.reset()
+                train_tuple = self.producer(done=done,reward=reward,next_obs=obs,value=value)
+                self._port.send(train_tuple)
+                self.status['obs'] = obs
+                self.status['done'] = done
 
                 if self._render:
                     self._env.render()
@@ -288,6 +318,10 @@ class Worker(object):
             elif cmd == "get_info":
                 self._log(info='get env info ...')
                 data = (self._env.observation_space, self._env.action_space)
+                self._port.send(data)
+            elif cmd == 'get_status':
+                self._log(info='get env status ...')
+                data = self.status
                 self._port.send(data)
             else:
                 raise NotImplementedError
@@ -328,6 +362,8 @@ class pEnv(object):
             p.start()
             worker_port.close()
 
+        self.batch_buffer = []
+
     def reset(self):
         for master_port in self.master_ports:
             master_port.send(("reset", None))
@@ -340,16 +376,40 @@ class pEnv(object):
         # results = [master_port.recv() for master_port in self.master_ports]
         # return results
 
-    def step(self, actions):
-        for master_port, action in zip(self.master_ports, actions):
-            master_port.send(('step', action))
-        results = zip(*[master_port.recv() for master_port in self.master_ports])
-        return results
+    # def step(self, actions):
+    #     for master_port, action in zip(self.master_ports, actions):
+    #         master_port.send(('step', action))
+    #     results = zip(*[master_port.recv() for master_port in self.master_ports])
+    #     return results
+
+    def fit(self, actions, values):
+        for master_port, action, value in zip(self.master_ports, actions, values):
+            master_port.send(('fit', (action, value)))
+        # results = zip(*filter(lambda x: x is not None, [master_port.recv() for master_port in self.master_ports]))
+        # return results
+        tmp =  filter(lambda x: x is not None, [master_port.recv() for master_port in self.master_ports])
+        # 传入到buffer中
+        for t in tmp:
+            self.batch_buffer.append(t)
+
+    def get_batch(self, batch_size):
+        if len(self.batch_buffer) < batch_size:
+            return None
+        else:
+            tmp = self.batch_buffer[:batch_size-1]
+            self.batch_buffer = self.batch_buffer[batch_size:]
+            return zip(*tmp)
 
     def get_env_info(self):
         self.master_ports[0].send(('get_info', None))
         ret = [self.master_ports[0].recv()]
         return ret
+
+    # def is_all_done(self):
+    #     for master_port in self.master_ports:
+    #         master_port.send(('step'))
+    #     results = zip(*[master_port.recv() for master_port in self.master_ports])
+    #     return results
 
     def render(self, mode, **kwargs):
         raise NotImplementedError
